@@ -1,3 +1,5 @@
+include Lexer
+
 let print_all ic =
   let rec loop () =
     let ch = input_char ic in
@@ -6,7 +8,9 @@ let print_all ic =
   try loop () with End_of_file -> ()
 
 let run ic =
-  print_all ic
+  let s = scan ic in match peek s with
+  | Error e -> failwith e
+  | Ok tok -> Printf.printf "%d\n" tok.line
 
 let () =
   let usage = "Usage: ung <file>" in
