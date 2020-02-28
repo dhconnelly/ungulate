@@ -1,0 +1,8 @@
+# ungulate
+
+a tiny scheme-like interpreter written in ocaml as an exercise
+
+to build and run:
+
+    ocamlbuild main.native
+    ./main.native test.ung
