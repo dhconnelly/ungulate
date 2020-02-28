@@ -1,4 +1,5 @@
 include Lexer
+include Token
 
 let print_all ic =
   let rec loop () =
