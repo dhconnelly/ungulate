@@ -4,5 +4,17 @@ a tiny scheme-like interpreter written in ocaml as an exercise
 
 to build and run:
 
-    ocamlbuild main.native
-    ./main.native test.ung
+    ocamlopt main.ml
+    ./a.out <path>
+
+some test programs are provided in the examples/ directory.
+
+TODO
+
+x scanner (done)
+x parser (done)
+x eval: literals (done)
+x eval: ifs (done)
+x eval: built-ins (done)
+- eval: define
+- eval: lambda

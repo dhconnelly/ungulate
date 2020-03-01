@@ -1,3 +1,6 @@
 _build
 *.byte
 *.native
+a.out
+*.cm*
+*.o
