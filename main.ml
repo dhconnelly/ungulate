@@ -49,8 +49,8 @@ type expr =
   Int of int
 and call_expr = {fn: expr; args: expr list}
 and if_expr = {cond: expr; cons: expr; alt: expr}
-and lambda_expr = {params: string list; body: expr}
-and def_expr = {name: string; value: expr}
+and lambda_expr = {params: string list; body: expr; name: string}
+and def_expr = {key: string; value: expr}
 
 let eat typ = function
   | [] -> failwith "unexpected eof while parsing"
@@ -74,28 +74,40 @@ let rec parse_one = function
   | {typ=Ident; text}::toks -> Lit text, toks
   | {text}::_ -> failwith (sprintf "bad expr: %s" text)
   | [] -> failwith "unexpected eof"
+
 and parse_if toks =
   let cond, toks = parse_one toks in
   let cons, toks = parse_one toks in
   let alt, toks = parse_one toks in
   let _, toks = eat Rparen toks in
   If {cond; cons; alt}, toks
+
 and parse_name toks =
   let (tok, toks) = eat Ident toks in tok.text, toks
-and parse_lambda toks =
+
+and parse_lambda_def name toks =
   let (_, toks) = eat Lparen toks in
   let (params, toks) = until Rparen parse_name toks in
   let (body, toks) = parse_one toks in
   let (_, toks) = eat Rparen toks in
-  Lambda {params; body}, toks
+  Lambda {params; body; name}, toks
+
+and parse_lambda = function
+  | {typ=Ident; text}::toks -> parse_lambda_def text toks
+  | ({typ=Lparen}::_) as toks -> parse_lambda_def "" toks
+  | [] -> failwith "unexpected eof"
+  | {text}::_ -> failwith (sprintf "invalid token in lambda: %s" text)
+
 and parse_define toks =
-  let (name, toks) = parse_name toks in
+  let (key, toks) = parse_name toks in
   let (value, toks) = parse_one toks in
   let (_, toks) = eat Rparen toks in
-  Def {name; value}, toks
+  Def {key; value}, toks
+
 and parse_seq toks =
   let (exprs, toks) = until Rparen parse_one toks in
   Seq exprs, toks
+
 and parse_call toks =
   let (fn, toks) = parse_one toks in
   let (exprs, toks) = until Rparen parse_one toks in
@@ -136,38 +148,46 @@ let rec eval_in env = function
   | Seq es -> eval_seq env es
   | Lit s -> lookup env s, env
   | Int x -> IntV x, env
-and lookup env name = match StringMap.find_opt name env with
-  | None -> failwith (sprintf "unbound ident: %s" name)
+
+and lookup env key = match StringMap.find_opt key env with
+  | None -> failwith (sprintf "unbound ident: %s" key)
   | Some v -> v
+
 and eval_lambda_call env params args body =
   let bindings = List.combine params args in
   let local_env = List.fold_left (fun env (k,v) -> StringMap.add k v env) env bindings in
   let (value, _) = eval_in local_env body in
   value
-and eval_lambda env {params; body} =
+
+and eval_lambda env {params; body; name} =
   FnV {
-    name="<anonymous_fn>";
+    name=if String.length name > 0 then name else "<anonymous_fn>";
     arity=(List.length params);
     env;
     apply=fun env args -> eval_lambda_call env params args body
   }, env
+
 and eval_seq env es = 
   let (vals, _) = eval_all_in env es in match List.rev vals with
   | [] -> Nil, env
   | last::_ -> last, env
-and eval_def env {name; value} =
-  let (value, env) = eval_in env value in Nil, StringMap.add name value env
+
+and eval_def env {key; value} =
+  let (value, env) = eval_in env value in Nil, StringMap.add key value env
+
 and eval_if env {cond; cons; alt} =
   let prev_env = env in
   let (cond, env) = eval_in env cond in
   let (value, env) = eval_in env (if unwrap_bool cond then cons else alt) in
   value, prev_env
+
 and eval_all_in env = function
   | [] -> [], env
   | x::xs ->
     let (v, env) = eval_in env x in
     let (vs, env) = eval_all_in env xs in
     v::vs, env
+
 and eval_call env {fn; args} =
   let (fn, env) = eval_in env fn in
   let (args, env) = eval_all_in env args in
@@ -183,6 +203,7 @@ let default_env = StringMap.(empty |>
     env=empty;
     apply=fun _ args -> List.nth args 0 |> print_val |> print_endline; Nil
   }) |>
+
   add "-" (FnV {
     name="-";
     arity=2;
@@ -191,6 +212,7 @@ let default_env = StringMap.(empty |>
       let (l, r) = (List.nth args 0), (List.nth args 1) in
       IntV (unwrap_int l - unwrap_int r))
   }) |>
+
   add "*" (FnV {
     name="*";
     arity=2;
@@ -199,6 +221,7 @@ let default_env = StringMap.(empty |>
       let (l, r) = (List.nth args 0), (List.nth args 1) in
       IntV (unwrap_int l * unwrap_int r))
   }) |>
+
   add "+" (FnV {
     name="+";
     arity=2;
@@ -207,6 +230,7 @@ let default_env = StringMap.(empty |>
       let (l, r) = (List.nth args 0), (List.nth args 1) in
       IntV (unwrap_int l + unwrap_int r))
   }) |>
+
   add "<" (FnV {
     name="<";
     arity=2;
@@ -225,7 +249,7 @@ and print = function
   | Call e -> sprintf "(%s %s)" (print e.fn) (print_all e.args)
   | If e -> sprintf "(if %s %s %s)" (print e.cond) (print e.cons) (print e.alt)
   | Lambda e -> sprintf "(lambda (%s) %s)" (concat " " e.params) (print e.body)
-  | Def e -> sprintf "(define %s %s)" e.name (print e.value)
+  | Def e -> sprintf "(define %s %s)" e.key (print e.value)
   | Seq es -> sprintf "(seq %s)" (print_all es)
   | Lit s -> s
   | Int x -> string_of_int x
