@@ -9,6 +9,17 @@ to build and run:
 
 some test programs are provided in the examples/ directory.
 
+## features
+
+` `if` expressions that evaluate to the value of the chosen branch
+- `seq` expressions that evaluate all their subexpressions and return
+  the value of the final one, or Nil if empty
+- `define` statements for local bindings. these evaluate to nil and
+  always introduce a new scope, i.e. they don't modify previously
+  captured environments
+- `lambda` expressions that close over their environment
+- integers and booleans
+
 TODO
 
 x scanner (done)
@@ -16,5 +27,7 @@ x parser (done)
 x eval: literals (done)
 x eval: ifs (done)
 x eval: built-ins (done)
-- eval: define
+x eval: define
+x eval: seq
 - eval: lambda
+- eval: recursive defines
