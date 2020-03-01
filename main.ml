@@ -100,15 +100,17 @@ let rec parse = function
   | [] -> []
   | toks -> let (expr, toks) = parse_one toks in expr::(parse toks)
 
-type value = Nil | BoolV of bool | IntV of int | BuiltInFn of built_in_fn
+
+type value = Nil | BoolV of bool | IntV of int | FnV of fn_val
 and env = value StringMap.t
-and built_in_fn = {name: string; arity: int; apply: (env -> value list -> value)}
+and fn = env -> (value list) -> (value * env)
+and fn_val = {name: string; arity: int; apply: fn}
 
 let print_val = function
   | Nil -> "nil"
   | BoolV x -> sprintf "%b" x
   | IntV x -> string_of_int x
-  | BuiltInFn {name} -> name
+  | FnV {name} -> name
 
 let print_all_vals vals = List.map print_val vals |> String.concat "\n"
 
@@ -118,47 +120,56 @@ let unwrap_bool = function
 let unwrap_int = function 
   | IntV x -> x
   | v -> failwith (sprintf "type: expected int, got %s" (print_val v))
+let unwrap_fn = function
+  | FnV f -> f
+  | v -> failwith (sprintf "type: expected fn, got %s" (print_val v))
 
-let rec eval_in env expr =
-  let eval_rec expr = eval_in env expr in match expr with
-  | Call {fn; args} -> apply env (eval_rec fn) (List.map eval_rec args)
-  | If e -> eval_bool env e
+let rec eval_in env = function
+  | Call e -> eval_call env e
+  | If e -> eval_if env e
   | Lambda e -> failwith "not implemented: lambda"
   | Def e -> failwith "not implemented: define"
-  | Lit s -> lookup env s
-  | Int x -> IntV x
+  | Lit s -> lookup env s, env
+  | Int x -> IntV x, env
 and lookup env name = match StringMap.find_opt name env with
   | None -> failwith (sprintf "unbound ident: %s" name)
   | Some v -> v
-and apply env fn args = match fn with
-  | BuiltInFn f -> apply_built_in env f args
-  | _ -> failwith "not implemented: call"
-and apply_built_in env {name; arity; apply} args =
+and eval_if env {cond; cons; alt} =
+  let (cond, env) = eval_in env cond in
+  eval_in env (if unwrap_bool cond then cons else alt)
+and eval_all_in env = function
+  | [] -> [], env
+  | x::xs ->
+    let (v, env) = eval_in env x in
+    let (vs, env) = eval_all_in env xs in
+    v::vs, env
+and eval_call env {fn; args} =
+  let (fn, env) = eval_in env fn in
+  let (args, env) = eval_all_in env args in
+  let {name; arity; apply} = unwrap_fn fn in
   if arity <> (List.length args) then
     failwith (sprintf "%s expects %d args" name arity)
   else apply env args
-and eval_bool env {cond; cons; alt} =
-  (if eval_in env cond |> unwrap_bool then cons else alt) |> eval_in env
 
 let default_env = StringMap.(empty |>
-  add "display" (BuiltInFn {
+  add "display" (FnV {
     name="display";
     arity=1;
-    apply=fun env args -> List.nth args 0 |> print_val |> print_endline; Nil
+    apply=fun env args -> List.nth args 0 |> print_val |> print_endline; Nil, env
   }) |>
-  add "+" (BuiltInFn {
+  add "+" (FnV {
     name="+";
     arity=2;
     apply=fun env args -> (
       let (l, r) = (List.nth args 0), (List.nth args 1) in
-      IntV (unwrap_int l + unwrap_int r))
+      IntV (unwrap_int l + unwrap_int r)), env
   }) |>
-  add "<" (BuiltInFn {
+  add "<" (FnV {
     name="<";
     arity=2;
     apply=fun env args -> (
       let (l, r) = (List.nth args 0), (List.nth args 1) in
-      BoolV (unwrap_int l < unwrap_int r))
+      BoolV (unwrap_int l < unwrap_int r)), env
   }))
 
 let eval expr = eval_in default_env expr
