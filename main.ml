@@ -105,10 +105,9 @@ let rec parse = function
   | [] -> []
   | toks -> let (expr, toks) = parse_one toks in expr::(parse toks)
 
-
 type value = Nil | BoolV of bool | IntV of int | FnV of fn_val
 and env = value StringMap.t
-and fn = env -> (value list) -> (value * env)
+and fn = value list -> value
 and fn_val = {name: string; arity: int; apply: fn}
 
 let print_val = function
@@ -132,7 +131,7 @@ let unwrap_fn = function
 let rec eval_in env = function
   | Call e -> eval_call env e
   | If e -> eval_if env e
-  | Lambda e -> failwith "not implemented: lambda"
+  | Lambda e -> eval_lambda env e
   | Def e -> eval_def env e
   | Seq es -> eval_seq env es
   | Lit s -> lookup env s, env
@@ -140,6 +139,17 @@ let rec eval_in env = function
 and lookup env name = match StringMap.find_opt name env with
   | None -> failwith (sprintf "unbound ident: %s" name)
   | Some v -> v
+and eval_lambda_call env params args body =
+  let bindings = List.combine params args in
+  let local_env = List.fold_left (fun env (k,v) -> StringMap.add k v env) env bindings in
+  let (value, _) = eval_in local_env body in
+  value
+and eval_lambda env {params; body} =
+  FnV {
+    name="<anonymous_fn>";
+    arity=(List.length params);
+    apply=fun args -> eval_lambda_call env params args body
+  }, env
 and eval_seq env es = 
   let (vals, _) = eval_all_in env es in match List.rev vals with
   | [] -> Nil, env
@@ -163,27 +173,41 @@ and eval_call env {fn; args} =
   let {name; arity; apply} = unwrap_fn fn in
   if arity <> (List.length args) then
     failwith (sprintf "%s expects %d args" name arity)
-  else apply env args
+  else (apply args), env
 
 let default_env = StringMap.(empty |>
   add "display" (FnV {
     name="display";
     arity=1;
-    apply=fun env args -> List.nth args 0 |> print_val |> print_endline; Nil, env
+    apply=fun args -> List.nth args 0 |> print_val |> print_endline; Nil
+  }) |>
+  add "-" (FnV {
+    name="-";
+    arity=2;
+    apply=fun args -> (
+      let (l, r) = (List.nth args 0), (List.nth args 1) in
+      IntV (unwrap_int l - unwrap_int r))
+  }) |>
+  add "*" (FnV {
+    name="*";
+    arity=2;
+    apply=fun args -> (
+      let (l, r) = (List.nth args 0), (List.nth args 1) in
+      IntV (unwrap_int l * unwrap_int r))
   }) |>
   add "+" (FnV {
     name="+";
     arity=2;
-    apply=fun env args -> (
+    apply=fun args -> (
       let (l, r) = (List.nth args 0), (List.nth args 1) in
-      IntV (unwrap_int l + unwrap_int r)), env
+      IntV (unwrap_int l + unwrap_int r))
   }) |>
   add "<" (FnV {
     name="<";
     arity=2;
-    apply=fun env args -> (
+    apply=fun args -> (
       let (l, r) = (List.nth args 0), (List.nth args 1) in
-      BoolV (unwrap_int l < unwrap_int r)), env
+      BoolV (unwrap_int l < unwrap_int r))
   }))
 
 let eval expr = eval_in default_env expr
