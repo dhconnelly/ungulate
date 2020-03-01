@@ -1,4 +1,5 @@
 open Printf
+module StringMap = Map.Make(String)
 
 type typ = Lparen | Rparen | Ident | Int | Eof
 type token = { typ: typ; text: string }
@@ -58,7 +59,7 @@ let eat typ = function
 let until delim f toks =
   let rec until_rec acc = function
     | [] -> acc, []
-    | {typ}::toks when typ=delim -> acc, toks
+    | {typ}::toks when typ=delim -> List.rev acc, toks
     | toks -> let (e, toks) = f toks in until_rec (e::acc) toks
   in until_rec [] toks
 
@@ -99,6 +100,62 @@ let rec parse = function
   | [] -> []
   | toks -> let (expr, toks) = parse_one toks in expr::(parse toks)
 
+type value = Nil | BoolV of bool | IntV of int | BuiltInFn of built_in_fn
+and env = value StringMap.t
+and built_in_fn = {name: string; arity: int; apply: (env -> value list -> value)}
+
+let print_val = function
+  | Nil -> "nil"
+  | BoolV x -> sprintf "%b" x
+  | IntV x -> string_of_int x
+  | BuiltInFn {name} -> name
+
+let print_all_vals vals = List.map print_val vals |> String.concat "\n"
+
+let unwrap_bool = function
+  | BoolV x -> x
+  | v -> failwith (sprintf "type: expected bool, got %s" (print_val v))
+let unwrap_int = function 
+  | IntV x -> x
+  | v -> failwith (sprintf "type: expected int, got %s" (print_val v))
+
+let rec eval_in env expr =
+  let eval_rec expr = eval_in env expr in match expr with
+  | Call {fn; args} -> eval_apply env (eval_rec fn) (List.map eval_rec args)
+  | If {cond; cons; alt} -> eval_rec (if eval_bool env cond then cons else alt)
+  | Lambda e -> failwith "not implemented: lambda"
+  | Def e -> failwith "not implemented: define"
+  | Lit s -> lookup env s
+  | Int x -> IntV x
+and lookup env name = match StringMap.find_opt name env with
+  | None -> failwith (sprintf "unbound ident: %s" name)
+  | Some v -> v
+and eval_bool env expr = eval_in env expr |> unwrap_bool
+and eval_apply env fn args = match fn with
+  | BuiltInFn f -> apply_built_in env f args
+  | _ -> failwith "not implemented: call"
+and apply_built_in env {name; arity; apply} args =
+  if arity <> (List.length args) then
+    failwith (sprintf "%s expects %d args" name arity)
+  else apply env args
+
+let default_env = StringMap.(empty |>
+  add "display" (BuiltInFn {
+    name="display";
+    arity=1;
+    apply=fun env args -> List.nth args 0 |> print_val |> print_endline; Nil
+  }) |>
+  add "<" (BuiltInFn {
+    name="<";
+    arity=2;
+    apply=fun env args -> (
+      let (l, r) = (List.nth args 0), (List.nth args 1) in
+      BoolV (unwrap_int l < unwrap_int r))
+  }))
+
+let eval expr = eval_in default_env expr
+let eval_all exprs = List.map eval exprs
+
 let concat = String.concat
 let rec print_all exprs = List.map print exprs |> concat " "
 and print = function
@@ -115,7 +172,8 @@ let read_all ic =
   read_rec [] |> List.rev |> List.to_seq |> String.of_seq
 
 let run path =
-  open_in path |> read_all |> scan |> parse |> print_all |> print_endline
+  let text = open_in path |> read_all in
+  scan text |> parse |> eval_all |> print_all_vals |> print_endline
 
 let () =
   let usage = "Usage: ung <file>" in
