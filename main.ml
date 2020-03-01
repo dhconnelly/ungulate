@@ -120,7 +120,7 @@ let rec parse = function
 type value = Nil | BoolV of bool | IntV of int | FnV of fn_val
 and env = value StringMap.t
 and fn = env -> value list -> value
-and fn_val = {name: string; arity: int; env: env; apply: fn}
+and fn_val = {name: string; arity: int; env: env ref; apply: fn}
 
 let print_val = function
   | Nil -> "nil"
@@ -160,12 +160,15 @@ and eval_lambda_call env params args body =
   value
 
 and eval_lambda env {params; body; name} =
-  FnV {
+  let renv = ref env in
+  let value = FnV {
     name=if String.length name > 0 then name else "<anonymous_fn>";
     arity=(List.length params);
-    env;
+    env=renv;
     apply=fun env args -> eval_lambda_call env params args body
-  }, env
+  } in
+  renv := (StringMap.add name value env);
+  value, env
 
 and eval_seq env es = 
   let (vals, _) = eval_all_in env es in match List.rev vals with
@@ -194,20 +197,20 @@ and eval_call env {fn; args} =
   let {name; arity; env=local_env; apply} = unwrap_fn fn in
   if arity <> (List.length args) then
     failwith (sprintf "%s expects %d args" name arity)
-  else (apply local_env args), env
+  else (apply !local_env args), env
 
 let default_env = StringMap.(empty |>
   add "display" (FnV {
     name="display";
     arity=1;
-    env=empty;
+    env=ref empty;
     apply=fun _ args -> List.nth args 0 |> print_val |> print_endline; Nil
   }) |>
 
   add "-" (FnV {
     name="-";
     arity=2;
-    env=empty;
+    env=ref empty;
     apply=fun _ args -> (
       let (l, r) = (List.nth args 0), (List.nth args 1) in
       IntV (unwrap_int l - unwrap_int r))
@@ -216,7 +219,7 @@ let default_env = StringMap.(empty |>
   add "*" (FnV {
     name="*";
     arity=2;
-    env=empty;
+    env=ref empty;
     apply=fun _ args -> (
       let (l, r) = (List.nth args 0), (List.nth args 1) in
       IntV (unwrap_int l * unwrap_int r))
@@ -225,7 +228,7 @@ let default_env = StringMap.(empty |>
   add "+" (FnV {
     name="+";
     arity=2;
-    env=empty;
+    env=ref empty;
     apply=fun _ args -> (
       let (l, r) = (List.nth args 0), (List.nth args 1) in
       IntV (unwrap_int l + unwrap_int r))
@@ -234,7 +237,7 @@ let default_env = StringMap.(empty |>
   add "<" (FnV {
     name="<";
     arity=2;
-    env=empty;
+    env=ref empty;
     apply=fun _ args -> (
       let (l, r) = (List.nth args 0), (List.nth args 1) in
       BoolV (unwrap_int l < unwrap_int r))

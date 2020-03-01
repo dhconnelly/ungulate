@@ -2,9 +2,7 @@
   (lambda fact (n)
     (if (< n 2)
         n
-        (* n (fact (- n one))))))
-
-(define one 1)
+        (* n (fact (- n 1))))))
 
 (define main
   (lambda ()

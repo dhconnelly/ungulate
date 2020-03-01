@@ -18,6 +18,7 @@ some test programs are provided in the examples/ directory.
   always introduce a new scope, i.e. they don't modify previously
   captured environments
 - `lambda` expressions that close over their environment
+- named `lambda`s to support recursion
 - integers and booleans
 
 TODO
@@ -29,5 +30,5 @@ x eval: ifs (done)
 x eval: built-ins (done)
 x eval: define
 x eval: seq
-- eval: lambda
-- eval: recursive defines
+x eval: lambda
+x eval: recursive defines
