@@ -107,8 +107,8 @@ let rec parse = function
 
 type value = Nil | BoolV of bool | IntV of int | FnV of fn_val
 and env = value StringMap.t
-and fn = value list -> value
-and fn_val = {name: string; arity: int; apply: fn}
+and fn = env -> value list -> value
+and fn_val = {name: string; arity: int; env: env; apply: fn}
 
 let print_val = function
   | Nil -> "nil"
@@ -148,7 +148,8 @@ and eval_lambda env {params; body} =
   FnV {
     name="<anonymous_fn>";
     arity=(List.length params);
-    apply=fun args -> eval_lambda_call env params args body
+    env;
+    apply=fun env args -> eval_lambda_call env params args body
   }, env
 and eval_seq env es = 
   let (vals, _) = eval_all_in env es in match List.rev vals with
@@ -170,42 +171,47 @@ and eval_all_in env = function
 and eval_call env {fn; args} =
   let (fn, env) = eval_in env fn in
   let (args, env) = eval_all_in env args in
-  let {name; arity; apply} = unwrap_fn fn in
+  let {name; arity; env=local_env; apply} = unwrap_fn fn in
   if arity <> (List.length args) then
     failwith (sprintf "%s expects %d args" name arity)
-  else (apply args), env
+  else (apply local_env args), env
 
 let default_env = StringMap.(empty |>
   add "display" (FnV {
     name="display";
     arity=1;
-    apply=fun args -> List.nth args 0 |> print_val |> print_endline; Nil
+    env=empty;
+    apply=fun _ args -> List.nth args 0 |> print_val |> print_endline; Nil
   }) |>
   add "-" (FnV {
     name="-";
     arity=2;
-    apply=fun args -> (
+    env=empty;
+    apply=fun _ args -> (
       let (l, r) = (List.nth args 0), (List.nth args 1) in
       IntV (unwrap_int l - unwrap_int r))
   }) |>
   add "*" (FnV {
     name="*";
     arity=2;
-    apply=fun args -> (
+    env=empty;
+    apply=fun _ args -> (
       let (l, r) = (List.nth args 0), (List.nth args 1) in
       IntV (unwrap_int l * unwrap_int r))
   }) |>
   add "+" (FnV {
     name="+";
     arity=2;
-    apply=fun args -> (
+    env=empty;
+    apply=fun _ args -> (
       let (l, r) = (List.nth args 0), (List.nth args 1) in
       IntV (unwrap_int l + unwrap_int r))
   }) |>
   add "<" (FnV {
     name="<";
     arity=2;
-    apply=fun args -> (
+    env=empty;
+    apply=fun _ args -> (
       let (l, r) = (List.nth args 0), (List.nth args 1) in
       BoolV (unwrap_int l < unwrap_int r))
   }))
