@@ -121,8 +121,8 @@ let unwrap_int = function
 
 let rec eval_in env expr =
   let eval_rec expr = eval_in env expr in match expr with
-  | Call {fn; args} -> eval_apply env (eval_rec fn) (List.map eval_rec args)
-  | If {cond; cons; alt} -> eval_rec (if eval_bool env cond then cons else alt)
+  | Call {fn; args} -> apply env (eval_rec fn) (List.map eval_rec args)
+  | If e -> eval_bool env e
   | Lambda e -> failwith "not implemented: lambda"
   | Def e -> failwith "not implemented: define"
   | Lit s -> lookup env s
@@ -130,20 +130,28 @@ let rec eval_in env expr =
 and lookup env name = match StringMap.find_opt name env with
   | None -> failwith (sprintf "unbound ident: %s" name)
   | Some v -> v
-and eval_bool env expr = eval_in env expr |> unwrap_bool
-and eval_apply env fn args = match fn with
+and apply env fn args = match fn with
   | BuiltInFn f -> apply_built_in env f args
   | _ -> failwith "not implemented: call"
 and apply_built_in env {name; arity; apply} args =
   if arity <> (List.length args) then
     failwith (sprintf "%s expects %d args" name arity)
   else apply env args
+and eval_bool env {cond; cons; alt} =
+  (if eval_in env cond |> unwrap_bool then cons else alt) |> eval_in env
 
 let default_env = StringMap.(empty |>
   add "display" (BuiltInFn {
     name="display";
     arity=1;
     apply=fun env args -> List.nth args 0 |> print_val |> print_endline; Nil
+  }) |>
+  add "+" (BuiltInFn {
+    name="+";
+    arity=2;
+    apply=fun env args -> (
+      let (l, r) = (List.nth args 0), (List.nth args 1) in
+      IntV (unwrap_int l + unwrap_int r))
   }) |>
   add "<" (BuiltInFn {
     name="<";
@@ -172,8 +180,7 @@ let read_all ic =
   read_rec [] |> List.rev |> List.to_seq |> String.of_seq
 
 let run path =
-  let text = open_in path |> read_all in
-  scan text |> parse |> eval_all |> print_all_vals |> print_endline
+  open_in path |> read_all |> scan |> parse |> eval_all |> ignore
 
 let () =
   let usage = "Usage: ung <file>" in
