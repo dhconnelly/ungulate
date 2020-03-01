@@ -44,6 +44,7 @@ type expr =
   If of if_expr |
   Lambda of lambda_expr |
   Def of def_expr |
+  Seq of expr list |
   Lit of string |
   Int of int
 and call_expr = {fn: expr; args: expr list}
@@ -67,6 +68,7 @@ let rec parse_one = function
   | {typ=Lparen}::{text="if"}::toks -> parse_if toks
   | {typ=Lparen}::{text="lambda"}::toks -> parse_lambda toks
   | {typ=Lparen}::{text="define"}::toks -> parse_define toks
+  | {typ=Lparen}::{text="seq"}::toks -> parse_seq toks
   | {typ=Lparen}::toks -> parse_call toks
   | {typ=Int; text}::toks -> Int (int_of_string text), toks
   | {typ=Ident; text}::toks -> Lit text, toks
@@ -91,6 +93,9 @@ and parse_define toks =
   let (value, toks) = parse_one toks in
   let (_, toks) = eat Rparen toks in
   Def {name; value}, toks
+and parse_seq toks =
+  let (exprs, toks) = until Rparen parse_one toks in
+  Seq exprs, toks
 and parse_call toks =
   let (fn, toks) = parse_one toks in
   let (exprs, toks) = until Rparen parse_one toks in
@@ -128,15 +133,24 @@ let rec eval_in env = function
   | Call e -> eval_call env e
   | If e -> eval_if env e
   | Lambda e -> failwith "not implemented: lambda"
-  | Def e -> failwith "not implemented: define"
+  | Def e -> eval_def env e
+  | Seq es -> eval_seq env es
   | Lit s -> lookup env s, env
   | Int x -> IntV x, env
 and lookup env name = match StringMap.find_opt name env with
   | None -> failwith (sprintf "unbound ident: %s" name)
   | Some v -> v
+and eval_seq env es = 
+  let (vals, _) = eval_all_in env es in match List.rev vals with
+  | [] -> Nil, env
+  | last::_ -> last, env
+and eval_def env {name; value} =
+  let (value, env) = eval_in env value in Nil, StringMap.add name value env
 and eval_if env {cond; cons; alt} =
+  let prev_env = env in
   let (cond, env) = eval_in env cond in
-  eval_in env (if unwrap_bool cond then cons else alt)
+  let (value, env) = eval_in env (if unwrap_bool cond then cons else alt) in
+  value, prev_env
 and eval_all_in env = function
   | [] -> [], env
   | x::xs ->
@@ -173,7 +187,7 @@ let default_env = StringMap.(empty |>
   }))
 
 let eval expr = eval_in default_env expr
-let eval_all exprs = List.map eval exprs
+let eval_all exprs = eval_all_in default_env exprs
 
 let concat = String.concat
 let rec print_all exprs = List.map print exprs |> concat " "
@@ -182,6 +196,7 @@ and print = function
   | If e -> sprintf "(if %s %s %s)" (print e.cond) (print e.cons) (print e.alt)
   | Lambda e -> sprintf "(lambda (%s) %s)" (concat " " e.params) (print e.body)
   | Def e -> sprintf "(define %s %s)" e.name (print e.value)
+  | Seq es -> sprintf "(seq %s)" (print_all es)
   | Lit s -> s
   | Int x -> string_of_int x
 
