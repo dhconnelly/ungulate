@@ -200,6 +200,5 @@ let run path =
   open_in path |> read_all |> scan |> parse |> eval_all default_env |> ignore
 
 let () =
-  let usage = "Usage: ung <file>" in
-  let path = try Sys.argv.(1) with Invalid_argument _ -> failwith usage in
-  run path
+  let args = Array.(length Sys.argv - 1 |> sub Sys.argv 1) in
+  Array.to_seq args |> Seq.iter (fun path -> print_endline path; run path)
