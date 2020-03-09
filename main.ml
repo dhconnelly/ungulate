@@ -24,7 +24,7 @@ let rec scan_tok text pos =
   else match String.get text pos with
   | '(' -> Lparen, pos, 1
   | ')' -> Rparen, pos, 1
-  | '+' | '*' | '-' | '<' -> Ident, pos, 1
+  | '+' | '*' | '-' | '<' | '=' -> Ident, pos, 1
   | 'a'..'z' | 'A'..'Z' -> Ident, pos, (scan_while text pos is_alphanum) - pos
   | '0'..'9' -> Int, pos, (scan_while text pos is_num) - pos
   | ' ' | '\n' | '\t' -> scan_tok text (pos+1)
@@ -133,10 +133,12 @@ let bind_binary name f env =
   bind name 2 List.(fun _ args -> f (nth args 0) (nth args 1)) env
 
 let default_env = StringMap.empty |>
+  StringMap.add "nil" Nil |>
   bind_unary "display" (fun x -> print_val x |> print_endline; Nil) |>
   bind_binary "+" (fun x y -> IntV (unwrap_int x + unwrap_int y)) |>
   bind_binary "-" (fun x y -> IntV (unwrap_int x - unwrap_int y)) |>
   bind_binary "*" (fun x y -> IntV (unwrap_int x * unwrap_int y)) |>
+  bind_binary "=" (fun x y -> BoolV (x = y)) |>
   bind_binary "<" (fun x y -> BoolV (unwrap_int x < unwrap_int y))
 
 let lookup env key = match StringMap.find_opt key env with
